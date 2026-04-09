@@ -14,7 +14,6 @@ jobs:
       - name: Build App
         run: |
           xcodebuild build -scheme VibeDrive -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO
-
       - name: Package IPA
         run: |
           mkdir -p Payload
