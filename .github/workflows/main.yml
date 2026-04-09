@@ -9,13 +9,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Build
         run: xcodebuild build -scheme VibeDrive -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO -destination 'generic/platform=iOS'
-      - name: Package
+
+      - name: Package IPA
         run: |
           mkdir -p Payload
-          find . -name "*.app" -type d -exec cp -r {} Payload/ \;
+          # Find the .app file in the hidden DerivedData folder
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "VibeDrive.app" -type d | head -n 1)
+          
+          if [ -d "$APP_PATH" ]; then
+            echo "SUCCESS: Found app at $APP_PATH"
+            cp -r "$APP_PATH" Payload/
+          else
+            echo "ERROR: Could not find VibeDrive.app"
+            exit 1
+          fi
+          
           zip -r VibeDrive.ipa Payload
+
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
