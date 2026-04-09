@@ -1,36 +1,23 @@
-name: Build
-on:
-  push:
-    branches:
-      - main
-jobs:
-  build:
-    runs-on: macos-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build
-        run: xcodebuild build -scheme VibeDrive -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO -destination 'generic/platform=iOS'
-
       - name: Package IPA
         run: |
           mkdir -p Payload
-          # Find the .app file in the hidden DerivedData folder
-          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "VibeDrive.app" -type d | head -n 1)
+          # Search for any .app folder created in the build directory
+          APP_PATH=$(find /Users/runner/Library/Developer/Xcode/DerivedData -name "*.app" -type d -not -path "*.xcresult*" | head -n 1)
           
-          if [ -d "$APP_PATH" ]; then
+          if [ -n "$APP_PATH" ]; then
             echo "SUCCESS: Found app at $APP_PATH"
             cp -r "$APP_PATH" Payload/
           else
-            echo "ERROR: Could not find VibeDrive.app"
-            exit 1
+            echo "ERROR: No .app folder found in DerivedData"
+            # Final fallback: look in the current workspace
+            FALLBACK_PATH=$(find . -name "*.app" -type d | head -n 1)
+            if [ -n "$FALLBACK_PATH" ]; then
+                echo "SUCCESS: Found app at $FALLBACK_PATH"
+                cp -r "$FALLBACK_PATH" Payload/
+            else
+                echo "CRITICAL ERROR: Build output not found anywhere"
+                exit 1
+            fi
           fi
           
           zip -r VibeDrive.ipa Payload
-
-      - name: Upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: VibeDrive-IPA
-          path: VibeDrive.ipa
