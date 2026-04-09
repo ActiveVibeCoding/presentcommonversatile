@@ -2,49 +2,50 @@ import SwiftUI
 import SceneKit
 
 enum AppState {
+    case loading
     case menu
     case playing
 }
 
 struct ContentView: View {
-    // We move the engine to a StateObject to keep it alive
     @StateObject private var engine = GameEngine()
-    @State private var currentState: AppState = .menu
+    @State private var currentState: AppState = .loading
     
     var body: some View {
         ZStack {
-            // 1. THE 3D LAYER (Must be at the very bottom of the ZStack)
+            // THE 3D LAYER - Always present
             SceneView(
                 scene: engine.scene,
                 pointOfView: engine.cameraNode,
                 options: []
             )
             .edgesIgnoringSafeArea(.all)
-            .blur(radius: currentState == .menu ? 8 : 0)
-            .background(Color.black) // Prevents white flashes
+            .blur(radius: currentState == .menu ? 12 : 0)
+            .background(Color.black)
 
-            // 2. THE UI LAYER
+            // THE UI LAYER
             ZStack {
                 if currentState == .menu {
                     menuView
                         .transition(.asymmetric(
-                            insertion: .opacity,
-                            removal: .move(edge: .leading).combined(with: .opacity)
+                            insertion: .opacity.combined(with: .scale(scale: 1.1)),
+                            removal: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.9))
                         ))
-                } else {
+                } else if currentState == .playing {
                     gameplayView
                         .transition(.asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            insertion: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 1.1)),
                             removal: .opacity
                         ))
                 }
             }
-            .animation(.spring(response: 0.5, dampingFraction: 0.8), value: currentState)
         }
         .onAppear {
-            // Force the engine to setup if it hasn't
-            if engine.scene.rootNode.childNodes.isEmpty {
-                engine.setupWorld()
+            // Small delay to let the GPU wake up before showing the UI
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                    currentState = .menu
+                }
             }
         }
     }
@@ -53,63 +54,53 @@ struct ContentView: View {
     var menuView: some View {
         VStack {
             Spacer()
-            Text("MATRIXED")
-                .font(.system(size: 44, weight: .black, design: .monospaced))
-                .foregroundColor(.cyan)
-                .shadow(color: .cyan.opacity(0.5), radius: 10)
+            VStack(spacing: -5) {
+                Text("MATRIXED")
+                    .font(.system(size: 50, weight: .black, design: .monospaced))
+                    .foregroundColor(.cyan)
+                    .shadow(color: .cyan.opacity(0.8), radius: 20)
+                Text("STABLE_BUILD_4.0").font(.system(.caption2, design: .monospaced)).foregroundColor(.green)
+            }
             
-            Text("OS_STABLE // LINK_READY")
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundColor(.green)
-                .padding(.bottom, 40)
+            Spacer()
             
             Button(action: { 
-                withAnimation { currentState = .playing }
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) { currentState = .playing }
             }) {
                 Text("RUN_SIMULATION")
                     .font(.system(.headline, design: .monospaced))
                     .foregroundColor(.black)
-                    .padding(.horizontal, 40)
-                    .padding(.vertical, 15)
+                    .padding(.horizontal, 50)
+                    .padding(.vertical, 18)
                     .background(Color.cyan)
                     .cornerRadius(2)
+                    .shadow(color: .cyan.opacity(0.5), radius: 15)
             }
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black.opacity(0.3)) // Subtle dimming
+        .background(Color.black.opacity(0.4))
     }
     
     // MARK: - Gameplay View
     var gameplayView: some View {
         ZStack {
-            // HUD
             VStack {
                 HStack {
                     VStack(alignment: .leading) {
-                        Text("MATRIXED_CORE").font(.system(.caption2, design: .monospaced)).foregroundColor(.cyan)
+                        Text("NODE: MATRIXED").font(.system(.caption2, design: .monospaced)).foregroundColor(.cyan)
                         Text("\(Int(abs(engine.speed) * 350))").font(.system(.title, design: .monospaced)).bold().foregroundColor(.white)
                     }
-                    .padding()
-                    .background(BlurView(style: .systemThinMaterialDark))
-                    .cornerRadius(10)
-                    
+                    .padding().background(Color.black.opacity(0.6)).cornerRadius(10)
                     Spacer()
-                    
                     Button(action: { withAnimation { currentState = .menu } }) {
-                        Image(systemName: "power")
-                            .font(.title2)
-                            .foregroundColor(.red)
-                            .padding()
-                            .background(Color.black.opacity(0.5))
-                            .clipShape(Circle())
+                        Image(systemName: "xmark.circle.fill").font(.title).foregroundColor(.red).padding().background(Color.black.opacity(0.5)).clipShape(Circle())
                     }
                 }
                 .padding(.top, 60).padding(.horizontal, 25)
                 Spacer()
             }
             
-            // Controls
             VStack {
                 Spacer()
                 HStack {
@@ -129,16 +120,16 @@ struct ContentView: View {
     }
 
     func controlButton(label: String, color: Color = .white, active: Bool, onStart: @escaping () -> Void, onEnd: @escaping () -> Void) -> some View {
-        RoundedRectangle(cornerRadius: 8)
+        RoundedRectangle(cornerRadius: 10)
             .fill(active ? color.opacity(0.4) : Color.white.opacity(0.1))
-            .frame(width: 70, height: 70)
-            .overlay(Text(label).font(.system(.title3, design: .monospaced)).bold().foregroundColor(.white))
+            .frame(width: 75, height: 75)
+            .overlay(Text(label).font(.system(.title2, design: .monospaced)).bold().foregroundColor(.white))
             .shadow(color: active ? color : .clear, radius: 10)
             .gesture(DragGesture(minimumDistance: 0).onChanged { _ in onStart() }.onEnded { _ in onEnd() })
     }
 }
 
-// MARK: - Engine Class
+// MARK: - Engine
 class GameEngine: ObservableObject {
     @Published var scene = SCNScene()
     @Published var speed: Float = 0
@@ -156,24 +147,32 @@ class GameEngine: ObservableObject {
     }
 
     func setupWorld() {
-        scene.rootNode.enumerateChildNodes { (node, _) in node.removeFromParentNode() }
         scene.background.contents = UIColor.black
         
+        // --- 1. AMBIENT LIGHT FIX ---
+        // This ensures the scene is NEVER black, even if directional lights fail
+        let ambient = SCNLight()
+        ambient.type = .ambient
+        ambient.intensity = 500 // Strong base light
+        let ambNode = SCNNode(); ambNode.light = ambient
+        scene.rootNode.addChildNode(ambNode)
+
+        let directional = SCNLight()
+        directional.type = .directional
+        directional.intensity = 2000
+        let dNode = SCNNode(); dNode.light = directional; dNode.position = SCNVector3(10, 20, 10)
+        scene.rootNode.addChildNode(dNode)
+
+        // 2. Floor
         let floor = SCNFloor()
         floor.reflectivity = 0.5
         let floorMat = SCNMaterial()
-        floorMat.diffuse.contents = UIColor(white: 0.02, alpha: 1.0)
+        floorMat.diffuse.contents = UIColor(white: 0.05, alpha: 1.0)
         floorMat.lightingModel = .physicallyBased
         floor.materials = [floorMat]
         scene.rootNode.addChildNode(SCNNode(geometry: floor))
 
-        let light = SCNLight()
-        light.type = .directional
-        light.intensity = 2000
-        let lNode = SCNNode(); lNode.light = light; lNode.position = SCNVector3(10, 20, 10)
-        scene.rootNode.addChildNode(lNode)
-
-        // Built Matrixed Car
+        // 3. Build Car
         let body = SCNBox(width: 1.8, height: 0.3, length: 4.0, chamferRadius: 0.2)
         body.firstMaterial?.diffuse.contents = UIColor.black
         body.firstMaterial?.metalness.contents = 1.0
@@ -181,13 +180,14 @@ class GameEngine: ObservableObject {
 
         let hood = SCNBox(width: 1.6, height: 0.1, length: 2.0, chamferRadius: 0.1)
         hood.firstMaterial?.diffuse.contents = UIColor.cyan
-        hood.firstMaterial?.emission.contents = UIColor.cyan.withAlphaComponent(0.5)
+        hood.firstMaterial?.emission.contents = UIColor.cyan.withAlphaComponent(0.8) // GLOW
         let hNode = SCNNode(geometry: hood); hNode.position = SCNVector3(0, 0.3, 1.0); carNode.addChildNode(hNode)
 
+        // 4. Camera
         cameraNode.camera = SCNCamera()
         cameraNode.camera?.wantsHDR = true
-        cameraNode.camera?.bloomIntensity = 2.0
-        cameraNode.position = SCNVector3(0, 8, -16)
+        cameraNode.camera?.bloomIntensity = 2.5
+        cameraNode.position = SCNVector3(0, 8, -18)
         scene.rootNode.addChildNode(carNode)
         scene.rootNode.addChildNode(cameraNode)
     }
@@ -215,10 +215,4 @@ class GameEngine: ObservableObject {
             }
         }
     }
-}
-
-struct BlurView: UIViewRepresentable {
-    var style: UIBlurEffect.Style
-    func makeUIView(context: Context) -> UIVisualEffectView { UIVisualEffectView(effect: UIBlurEffect(style: style)) }
-    func updateUIView(_ uiView: UIVisualEffectView, context: Context) {}
 }
