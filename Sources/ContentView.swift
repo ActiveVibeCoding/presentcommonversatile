@@ -2,43 +2,34 @@ import SwiftUI
 import SceneKit
 
 struct ContentView: View {
-    @State private var carNode: SCNNode?
-    @State private var cameraNode: SCNNode?
-    
-    @State private var isAccelerating = false
-    @State private var isBraking = false
-    @State private var steering: Float = 0
-    @State private var speed: Float = 0
-    @State private var angle: Float = 0
-    
-    let maxSpeed: Float = 0.5
-    let accelRate: Float = 0.015
-    let friction: Float = 0.98
+    // Using a dedicated Scene class to keep the engine running smoothly
+    @StateObject private var engine = GameEngine()
 
     var body: some View {
         ZStack {
-            // The 3D View
             SceneView(
-                scene: setupScene(),
-                pointOfView: cameraNode,
-                options: [.autoenablesDefaultLighting]
+                scene: engine.scene,
+                pointOfView: engine.cameraNode,
+                options: [.allowsCameraControl, .autoenablesDefaultLighting]
             )
             .ignoresSafeArea()
 
-            // HUD Overlay
+            // HUD
             VStack {
                 HStack {
                     VStack(alignment: .leading) {
-                        Text("VIBE_DRIVE_PRO")
-                        Text("SPD: \(Int(speed * 200))").foregroundColor(.green)
+                        Text("VIBE_DRIVE_ULTRA").bold()
+                        Text("SPEED: \(Int(engine.speed * 200)) KM/H")
+                            .foregroundColor(.green)
+                            .italic()
                     }
                     .font(.system(.caption, design: .monospaced))
-                    .padding(10)
-                    .background(Color.black.opacity(0.6))
-                    .cornerRadius(8)
+                    .padding()
+                    .background(BlurView(style: .systemThinMaterialDark))
+                    .cornerRadius(12)
                     Spacer()
                 }
-                .padding(.top, 50).padding(.leading, 20)
+                .padding(.top, 60).padding(.leading, 20)
                 Spacer()
             }
 
@@ -46,128 +37,145 @@ struct ContentView: View {
             VStack {
                 Spacer()
                 HStack(alignment: .bottom) {
-                    HStack(spacing: 15) {
-                        controlPad(label: "L", active: steering < 0) { steering = -1 } onEnd: { steering = 0 }
-                        controlPad(label: "R", active: steering > 0) { steering = 1 } onEnd: { steering = 0 }
+                    // Steering
+                    HStack(spacing: 20) {
+                        controlButton(label: "←", active: engine.steering > 0) { engine.steering = 0.03 } onEnd: { engine.steering = 0 }
+                        controlButton(label: "→", active: engine.steering < 0) { engine.steering = -0.03 } onEnd: { engine.steering = 0 }
                     }
                     Spacer()
-                    HStack(spacing: 15) {
-                        controlPad(label: "REV", color: .red, active: isBraking) { isBraking = true } onEnd: { isBraking = false }
-                        controlPad(label: "GAS", color: .green, active: isAccelerating) { isAccelerating = true } onEnd: { isAccelerating = false }
+                    // Pedals
+                    HStack(spacing: 20) {
+                        controlButton(label: "BRAKE", color: .red, active: engine.isBraking) { engine.isBraking = true } onEnd: { engine.isBraking = false }
+                        controlButton(label: "DRIVE", color: .green, active: engine.isAccelerating) { engine.isAccelerating = true } onEnd: { engine.isAccelerating = false }
                     }
                 }
                 .padding(.horizontal, 30)
-                .padding(.bottom, 40)
+                .padding(.bottom, 50)
             }
         }
-        .onAppear { startEngine() }
     }
 
-    func setupScene() -> SCNScene {
-        let scene = SCNScene()
-        scene.background.contents = UIColor.black
-        
-        // Manual Lighting Setup (Fixes the black screen)
-        let ambientLight = SCNLight()
-        ambientLight.type = .ambient
-        ambientLight.intensity = 400
-        let ambientNode = SCNNode()
-        ambientNode.light = ambientLight
-        scene.rootNode.addChildNode(ambientNode)
-
-        let sunLight = SCNLight()
-        sunLight.type = .directional
-        sunLight.intensity = 1000
-        let sunNode = SCNNode()
-        sunNode.light = sunLight
-        sunNode.position = SCNVector3(x: 5, y: 10, z: 5)
-        sunNode.eulerAngles = SCNVector3(-Float.pi/4, Float.pi/4, 0)
-        scene.rootNode.addChildNode(sunNode)
-        
-        // Ground
-        let floor = SCNFloor()
-        floor.firstMaterial?.diffuse.contents = generateGrid()
-        let floorNode = SCNNode(geometry: floor)
-        scene.rootNode.addChildNode(floorNode)
-        
-        // Car
-        let car = createCar()
-        scene.rootNode.addChildNode(car)
-        self.carNode = car
-        
-        // Camera
-        let cam = SCNCamera()
-        cam.zFar = 1000
-        let camNode = SCNNode()
-        camNode.camera = cam
-        camNode.name = "mainCamera"
-        camNode.position = SCNVector3(0, 4, -8)
-        scene.rootNode.addChildNode(camNode)
-        self.cameraNode = camNode
-        
-        return scene
-    }
-
-    func createCar() -> SCNNode {
-        let root = SCNNode()
-        
-        let body = SCNBox(width: 1.2, height: 0.5, length: 2.5, chamferRadius: 0.2)
-        body.firstMaterial?.diffuse.contents = UIColor.systemBlue
-        body.firstMaterial?.lightingModel = .physicallyBased
-        body.firstMaterial?.metalness.contents = 0.8
-        let bodyNode = SCNNode(geometry: body)
-        bodyNode.position = SCNVector3(0, 0.4, 0)
-        root.addChildNode(bodyNode)
-        
-        let glass = SCNBox(width: 0.9, height: 0.4, length: 1.1, chamferRadius: 0.1)
-        glass.firstMaterial?.diffuse.contents = UIColor.cyan.withAlphaComponent(0.6)
-        let glassNode = SCNNode(geometry: glass)
-        glassNode.position = SCNVector3(0, 0.7, 0.3)
-        root.addChildNode(glassNode)
-        
-        return root
-    }
-
-    func startEngine() {
-        Timer.scheduledTimer(withTimeInterval: 1/60, repeats: true) { _ in
-            guard let car = carNode, let cam = cameraNode else { return }
-            
-            if isAccelerating { speed = min(speed + accelRate, maxSpeed) }
-            else if isBraking { speed = max(speed - accelRate, -0.15) }
-            else { speed *= friction }
-            
-            angle += steering * (speed * 0.15)
-            
-            car.rotation = SCNVector4(0, 1, 0, angle)
-            car.position.x += sin(angle) * speed
-            car.position.z += cos(angle) * speed
-            
-            let ideal = SCNVector3(car.position.x - sin(angle)*7, car.position.y + 3.5, car.position.z - cos(angle)*7)
-            cam.position.x += (ideal.x - cam.position.x) * 0.1
-            cam.position.y += (ideal.y - cam.position.y) * 0.1
-            cam.position.z += (ideal.z - cam.position.z) * 0.1
-            cam.look(at: car.position)
-        }
-    }
-
-    func controlPad(label: String, color: Color = .white, active: Bool, onStart: @escaping () -> Void, onEnd: @escaping () -> Void) -> some View {
+    func controlButton(label: String, color: Color = .white, active: Bool, onStart: @escaping () -> Void, onEnd: @escaping () -> Void) -> some View {
         Text(label)
-            .font(.system(.body, design: .monospaced)).bold()
-            .frame(width: 65, height: 65)
-            .background(active ? color.opacity(0.8) : Color.white.opacity(0.15))
+            .font(.system(.headline, design: .monospaced))
+            .frame(width: 80, height: 80)
+            .background(active ? color.opacity(0.6) : Color.white.opacity(0.1))
             .foregroundColor(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 18))
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 1))
             .gesture(DragGesture(minimumDistance: 0).onChanged { _ in onStart() }.onEnded { _ in onEnd() })
     }
-    
-    func generateGrid() -> UIImage {
-        let size = CGSize(width: 64, height: 64)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { context in
-            let rect = CGRect(origin: .zero, size: size)
-            context.cgContext.setStrokeColor(UIColor.white.withAlphaComponent(0.3).cgColor)
-            context.cgContext.setLineWidth(1.0)
-            context.cgContext.stroke(rect)
+}
+
+// THE ENGINE: This handles the actual 3D logic separately from the UI
+class GameEngine: ObservableObject {
+    @Published var scene = SCNScene()
+    @Published var speed: Float = 0
+    @Published var steering: Float = 0
+    @Published var isAccelerating = false
+    @Published var isBraking = false
+    
+    var carNode = SCNNode()
+    var cameraNode = SCNNode()
+    var carAngle: Float = 0
+
+    init() {
+        setupWorld()
+        startLoop()
+    }
+
+    func setupWorld() {
+        scene.background.contents = UIColor.black
+        
+        // Realistic Ground: Reflective and Dark
+        let floor = SCNFloor()
+        floor.reflectivity = 0.25
+        floor.reflectionFalloffEnd = 10
+        let floorMaterial = SCNMaterial()
+        floorMaterial.diffuse.contents = UIColor(white: 0.1, alpha: 1.0)
+        floorMaterial.lightingModel = .physicallyBased
+        floor.materials = [floorMaterial]
+        scene.rootNode.addChildNode(SCNNode(geometry: floor))
+
+        // High-End Lighting
+        let envLight = SCNLight()
+        envLight.type = .probe
+        scene.rootNode.light = envLight
+
+        let spot = SCNLight()
+        spot.type = .directional
+        spot.intensity = 1500
+        let spotNode = SCNNode()
+        spotNode.light = spot
+        spotNode.position = SCNVector3(10, 20, 10)
+        spotNode.eulerAngles = SCNVector3(-Float.pi/3, 0, 0)
+        scene.rootNode.addChildNode(spotNode)
+
+        // The Car: Modern Sports Aesthetic
+        let bodyGeo = SCNBox(width: 1.4, height: 0.4, length: 3.0, chamferRadius: 0.3)
+        bodyGeo.firstMaterial?.diffuse.contents = UIColor.systemRed
+        bodyGeo.firstMaterial?.metalness.contents = 1.0
+        bodyGeo.firstMaterial?.roughness.contents = 0.1
+        bodyGeo.firstMaterial?.lightingModel = .physicallyBased
+        
+        carNode.geometry = bodyGeo
+        carNode.position = SCNVector3(0, 0.2, 0)
+        scene.rootNode.addChildNode(carNode)
+
+        // Cabin/Cockpit
+        let cabinGeo = SCNBox(width: 1.0, height: 0.4, length: 1.2, chamferRadius: 0.2)
+        cabinGeo.firstMaterial?.diffuse.contents = UIColor.black
+        let cabinNode = SCNNode(geometry: cabinGeo)
+        cabinNode.position = SCNVector3(0, 0.35, -0.2)
+        carNode.addChildNode(cabinNode)
+
+        // Camera
+        cameraNode.camera = SCNCamera()
+        cameraNode.camera?.zFar = 2000
+        cameraNode.camera?.motionBlurIntensity = 0.5
+        cameraNode.position = SCNVector3(0, 5, -10)
+        scene.rootNode.addChildNode(cameraNode)
+    }
+
+    func startLoop() {
+        Timer.scheduledTimer(withTimeInterval: 1/60, repeats: true) { _ in
+            DispatchQueue.main.async {
+                // Acceleration Logic
+                if self.isAccelerating { self.speed = min(self.speed + 0.01, 0.8) }
+                else if self.isBraking { self.speed = max(self.speed - 0.02, -0.2) }
+                else { self.speed *= 0.98 }
+
+                // Turning Logic
+                if abs(self.speed) > 0.01 {
+                    self.carAngle += self.steering * (self.speed * 2.0)
+                }
+
+                // Apply Transforms
+                self.carNode.rotation = SCNVector4(0, 1, 0, self.carAngle)
+                self.carNode.position.x += sin(self.carAngle) * self.speed
+                self.carNode.position.z += cos(self.carAngle) * self.speed
+
+                // Smooth Camera Follow
+                let targetCamPos = SCNVector3(
+                    self.carNode.position.x - sin(self.carAngle) * 8,
+                    self.carNode.position.y + 4,
+                    self.carNode.position.z - cos(self.carAngle) * 8
+                )
+                
+                self.cameraNode.position.x += (targetCamPos.x - self.cameraNode.position.x) * 0.1
+                self.cameraNode.position.y += (targetCamPos.y - self.cameraNode.position.y) * 0.1
+                self.cameraNode.position.z += (targetCamPos.z - self.cameraNode.position.z) * 0.1
+                self.cameraNode.look(at: self.carNode.position)
+            }
         }
     }
+}
+
+// Utility for blurred HUD background
+struct BlurView: UIViewRepresentable {
+    var style: UIBlurEffect.Style
+    func makeUIView(context: Context) -> UIVisualEffectView {
+        return UIVisualEffectView(effect: UIBlurEffect(style: style))
+    }
+    func updateUIView(_ uiView: UIVisualEffectView, context: Context) {}
 }
