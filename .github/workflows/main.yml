@@ -8,19 +8,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build
+      - name: Archive App
         run: |
-          # 1. Generate an Xcode project from the Swift Package
-          swift package generate-xcodeproj
-          # 2. Build that project specifically for iOS
-          xcodebuild build -project VibeDrive.xcodeproj -scheme VibeDrive -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO
+          xcodebuild archive \
+            -scheme VibeDrive \
+            -destination 'generic/platform=iOS' \
+            -archivePath ./VibeDrive.xcarchive \
+            -sdk iphoneos \
+            SKIP_INSTALL=NO \
+            CODE_SIGNING_ALLOWED=NO
 
-      - name: Package
+      - name: Package IPA
         run: |
           mkdir -p Payload
-          # Search specifically for the .app bundle inside the build products
-          APP_PATH=$(find . -name "*.app" -type d | grep "Release-iphoneos" | head -n 1)
-          echo "Found: $APP_PATH"
+          # The archive command puts the .app inside the 'Products/usr/local/bin' or 'Products/Applications' folder
+          APP_PATH=$(find ./VibeDrive.xcarchive -name "*.app" -type d | head -n 1)
+          echo "Found App at: $APP_PATH"
           cp -r "$APP_PATH" Payload/
           zip -r VibeDrive.ipa Payload
 
