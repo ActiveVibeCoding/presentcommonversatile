@@ -8,23 +8,52 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Archive App
+      - name: Build Executable
         run: |
-          xcodebuild archive \
+          xcodebuild build \
             -scheme VibeDrive \
             -destination 'generic/platform=iOS' \
-            -archivePath ./VibeDrive.xcarchive \
-            -sdk iphoneos \
-            SKIP_INSTALL=NO \
+            -configuration Release \
+            -derivedDataPath ./build \
             CODE_SIGNING_ALLOWED=NO
 
       - name: Package IPA
         run: |
-          mkdir -p Payload
-          # The archive command puts the .app inside the 'Products/usr/local/bin' or 'Products/Applications' folder
-          APP_PATH=$(find ./VibeDrive.xcarchive -name "*.app" -type d | head -n 1)
-          echo "Found App at: $APP_PATH"
-          cp -r "$APP_PATH" Payload/
+          # 1. Create the App Bundle structure
+          mkdir -p Payload/VibeDrive.app
+          
+          # 2. Find the executable binary
+          BINARY_PATH=$(find ./build -type f -name "VibeDrive" | grep "Release-iphoneos" | head -n 1)
+          echo "Found Binary at: $BINARY_PATH"
+          
+          # 3. Copy binary into the folder
+          cp "$BINARY_PATH" Payload/VibeDrive.app/VibeDrive
+          
+          # 4. Create a basic Info.plist so iOS recognizes it as an app
+          cat <<EOF > Payload/VibeDrive.app/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>VibeDrive</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.vibedrive.app</string>
+              <key>CFBundleName</key>
+              <string>VibeDrive</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UILaunchStoryboardName</key>
+              <string>LaunchScreen</string>
+          </dict>
+          </plist>
+          EOF
+          
+          # 5. Zip it up
           zip -r VibeDrive.ipa Payload
 
       - name: Upload
