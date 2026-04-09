@@ -9,12 +9,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build App
-        run: xcodebuild build -scheme VibeDrive -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO
+        run: xcodebuild build -scheme VibeDrive -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO -destination 'generic/platform=iOS'
 
       - name: Package IPA
         run: |
           mkdir -p Payload
-          find . -name "*.app" -exec cp -r {} Payload/ \;
+          # This finds the compiled .app and copies it into the Payload folder
+          find . -name "*.app" -type d -exec cp -r {} Payload/ \;
           zip -r VibeDrive.ipa Payload
           
       - name: Upload Artifact
