@@ -17,6 +17,7 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
+            // The 3D View
             SceneView(
                 scene: setupScene(),
                 pointOfView: cameraNode,
@@ -24,6 +25,7 @@ struct ContentView: View {
             )
             .ignoresSafeArea()
 
+            // HUD Overlay
             VStack {
                 HStack {
                     VStack(alignment: .leading) {
@@ -40,6 +42,7 @@ struct ContentView: View {
                 Spacer()
             }
 
+            // Controls
             VStack {
                 Spacer()
                 HStack(alignment: .bottom) {
@@ -64,17 +67,40 @@ struct ContentView: View {
         let scene = SCNScene()
         scene.background.contents = UIColor.black
         
+        // Manual Lighting Setup (Fixes the black screen)
+        let ambientLight = SCNLight()
+        ambientLight.type = .ambient
+        ambientLight.intensity = 400
+        let ambientNode = SCNNode()
+        ambientNode.light = ambientLight
+        scene.rootNode.addChildNode(ambientNode)
+
+        let sunLight = SCNLight()
+        sunLight.type = .directional
+        sunLight.intensity = 1000
+        let sunNode = SCNNode()
+        sunNode.light = sunLight
+        sunNode.position = SCNVector3(x: 5, y: 10, z: 5)
+        sunNode.eulerAngles = SCNVector3(-Float.pi/4, Float.pi/4, 0)
+        scene.rootNode.addChildNode(sunNode)
+        
+        // Ground
         let floor = SCNFloor()
         floor.firstMaterial?.diffuse.contents = generateGrid()
         let floorNode = SCNNode(geometry: floor)
         scene.rootNode.addChildNode(floorNode)
         
+        // Car
         let car = createCar()
         scene.rootNode.addChildNode(car)
         self.carNode = car
         
+        // Camera
+        let cam = SCNCamera()
+        cam.zFar = 1000
         let camNode = SCNNode()
-        camNode.camera = SCNCamera()
+        camNode.camera = cam
+        camNode.name = "mainCamera"
         camNode.position = SCNVector3(0, 4, -8)
         scene.rootNode.addChildNode(camNode)
         self.cameraNode = camNode
@@ -84,16 +110,19 @@ struct ContentView: View {
 
     func createCar() -> SCNNode {
         let root = SCNNode()
-        let body = SCNBox(width: 1.1, height: 0.4, length: 2.3, chamferRadius: 0.15)
+        
+        let body = SCNBox(width: 1.2, height: 0.5, length: 2.5, chamferRadius: 0.2)
         body.firstMaterial?.diffuse.contents = UIColor.systemBlue
+        body.firstMaterial?.lightingModel = .physicallyBased
+        body.firstMaterial?.metalness.contents = 0.8
         let bodyNode = SCNNode(geometry: body)
-        bodyNode.position = SCNVector3(0, 0.3, 0)
+        bodyNode.position = SCNVector3(0, 0.4, 0)
         root.addChildNode(bodyNode)
         
-        let glass = SCNBox(width: 0.8, height: 0.4, length: 1.0, chamferRadius: 0.1)
-        glass.firstMaterial?.diffuse.contents = UIColor.cyan.withAlphaComponent(0.4)
+        let glass = SCNBox(width: 0.9, height: 0.4, length: 1.1, chamferRadius: 0.1)
+        glass.firstMaterial?.diffuse.contents = UIColor.cyan.withAlphaComponent(0.6)
         let glassNode = SCNNode(geometry: glass)
-        glassNode.position = SCNVector3(0, 0.6, 0.2)
+        glassNode.position = SCNVector3(0, 0.7, 0.3)
         root.addChildNode(glassNode)
         
         return root
